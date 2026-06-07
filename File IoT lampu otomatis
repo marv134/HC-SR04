@@ -1,0 +1,100 @@
+from hcsr import HCSR04
+from machine import Pin, PWM
+from time import sleep
+import network
+import socket
+
+# Inisialisasi LED dan Sensor
+led = PWM(Pin(26))
+led.freq(500) 
+sensor = HCSR04(trigger_pin=12, echo_pin=27)
+
+# Setup Access Point (minggu lalu)
+ap = network.WLAN(network.AP_IF)
+ap.config(essid='run')
+ap.active(True)
+sleep(1)
+
+# Setup WLAN Client
+rn = network.WLAN(network.STA_IF)
+rn.active(True)
+rn.connect('FisikaMesh', 'fisikaunpar')
+while rn.isconnected() == False:
+    print('.', end='')
+    sleep(0.5)
+
+print('\nTersambung')
+print(rn.ifconfig())
+
+# Setup Socket Server
+sl = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sl.bind(('', 80))
+sl.listen(5)
+sl.setblocking(False) # PENTING: Membuat socket tidak menunggu/blocking
+
+# Status Mode (True = Kontrol HP aktif, False = Mode Sensor Aktif)
+mode_hp = False 
+
+def isi():
+    html = '''
+    <html>
+    <head><title>Judul</title></head>
+    <body>
+    <h1>ESP32 Web server</h1>
+    <h2>Mengontrol nyala LED</h2>
+    <a href="/?led=on"><button><h1>ON</h1></button></a>
+    <a href="/?led=off"><button><h1>OFF</h1></button></a>
+    </body>
+    </html>
+    '''
+    return html
+
+while True:
+    # 1. BAGIAN WEB SERVER (KONTROL HP)
+    try:
+        # Karena setblocking(False), baris ini tidak akan menghentikan program jika tidak ada HP yang konek
+        conn, addr = sl.accept() 
+        print('Tersambung dengan %s' % str(addr))
+        request = str(conn.recv(1024))
+        print('Isi request - %s' % request)
+        
+        led_on = request.find('/?led=on')
+        led_off = request.find('/?led=off')
+        
+        if led_on == 6:
+            print('LED ON (Mode HP)')
+            led.duty(1023)
+            mode_hp = True # Kunci di mode HP
+        elif led_off == 6:
+            print('LED OFF (Mode HP)')
+            led.duty(0)
+            mode_hp = True # Kunci di mode HP
+        elif led_auto == 6:
+        print('Kembali ke Mode Sensor Otomatis!')
+        mode_hp = False
+            
+        conn.send('HTTP/1.1 200 OK\n')
+        conn.send('Content-Type: text/html\n')
+        conn.send('Connection: closed\n\n')
+        conn.sendall(isi())
+        conn.close()
+        
+    except OSError:
+        # Error OSError di sini wajar terjadi karena socket diset Non-Blocking (artinya tidak ada HP yang konek)
+        # Program sengaja dilewatkan ke bawah untuk membaca sensor jarak
+        pass
+
+    # Sensor hanya akan mengontrol LED jika kita tidak sedang memaksa LED ON/OFF lewat HP
+    if not mode_hp:
+        try:
+            distance = sensor.distance_cm()
+            brightness = int(1023 / (distance + 5))
+            led.duty(brightness)
+            print("Distance:", distance, "cm")
+            led.duty(brightness)
+            
+        except Exception as e:
+            # Mengantisipasi error pembacaan sensor ultrasonik sesaat
+            pass
+            
+    sleep(0.1) 
