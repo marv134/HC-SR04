@@ -44,6 +44,7 @@ def isi():
     <h2>Mengontrol nyala LED</h2>
     <a href="/?led=on"><button><h1>ON</h1></button></a>
     <a href="/?led=off"><button><h1>OFF</h1></button></a>
+    <a href="/?led=off"><button><h1>Mode Otomatis</h1></button></a>
     </body>
     </html>
     '''
